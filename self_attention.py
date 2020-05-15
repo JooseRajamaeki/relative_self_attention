@@ -26,7 +26,6 @@ class SelfAttention(torch.nn.Module):
         self.out_dim = out_dim
 
         self.attention_type = attention_type
-        self.regularization_standard_deviation = 0.01
 
         k = 1.0 / math.sqrt(in_dim)
         self.weights_key = torch.nn.Parameter(torch.Tensor(np.random.uniform(-k,k,size=[out_dim,in_dim])))
