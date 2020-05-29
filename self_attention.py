@@ -72,6 +72,42 @@ class SelfAttention(torch.nn.Module):
         return outputs
 
 
+class MultiHeadSelfAttention(torch.nn.Module):
+
+    def __init__(self, in_dim, out_dim, head_dim, num_heads, attention_type = 'regular'):
+
+        super(MultiHeadSelfAttention, self).__init__()
+
+        k = 1.0 / math.sqrt(head_dim * num_heads)
+        self.weights = torch.nn.Parameter(torch.Tensor(np.random.uniform(-k,k, size=[out_dim, head_dim * num_heads])))
+        self.bias = torch.nn.Parameter(torch.Tensor(np.random.uniform(-k,k, size=[out_dim])))
+
+        self.heads = []
+        for i in range(num_heads):
+            self.heads.append(SelfAttention(in_dim,head_dim,attention_type=attention_type))
+            self.add_module('self_attention_'+str(i),self.heads[-1])
+        
+    def forward(self,inputs):
+
+        batch = True
+        if len(list(inputs.size())) == 2:
+            batch = False
+            inputs = inputs[np.newaxis,:]
+
+        head_outputs = []
+        for head in self.heads:
+            head_outputs.append(head.forward_batch(inputs))
+
+        concatenated = torch.cat(head_outputs, dim=2)
+
+        outputs = _affine(self.weights,self.bias,concatenated)
+
+        if not batch:
+            outputs = outputs[0,:,:]
+
+        return outputs
+
+
 if __name__ == '__main__':
 
     import matplotlib.pyplot as plt
@@ -109,17 +145,20 @@ if __name__ == '__main__':
     # Change the attention type to any other string if you want to use the regular self attention.
     attention_type = 'relative'
 
-    hidden_dimension = 100
-    attention = torch.nn.Sequential(SelfAttention(in_dimension,hidden_dimension,attention_type=attention_type),
+    hidden_dimension = 25
+    head_dim = 10
+    num_heads = 5
+    
+    attention = torch.nn.Sequential(MultiHeadSelfAttention(in_dimension,hidden_dimension,head_dim,num_heads,attention_type=attention_type),
                                     torch.nn.SELU(),
-                                    SelfAttention(hidden_dimension,hidden_dimension, attention_type=attention_type),
+                                    MultiHeadSelfAttention(hidden_dimension,hidden_dimension,head_dim,num_heads, attention_type=attention_type),
                                     torch.nn.SELU(),
-                                    SelfAttention(hidden_dimension,out_dimension, attention_type=attention_type))
+                                    MultiHeadSelfAttention(hidden_dimension,out_dimension,head_dim,num_heads, attention_type=attention_type))
 
     criterion = torch.nn.MSELoss(reduction='sum')
     optimizer = torch.optim.SGD(attention.parameters(),lr=1e-4,momentum=0.8)
 
-    for iteration in range(5000):
+    for iteration in range(10000):
 
         optimizer.zero_grad()
         y_hat = attention(x)
