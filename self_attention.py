@@ -53,8 +53,6 @@ class SelfAttention(torch.nn.Module):
 
         outputs = torch.einsum('ijk,ikl->ijl',weights,values)
 
-        assert(not np.isnan(np.min(outputs.detach().numpy())))
-
         return outputs
 
     def forward(self,inputs):
@@ -114,33 +112,39 @@ if __name__ == '__main__':
     random.seed(8435709)
     np.random.seed(8435709)
 
+    device = 'cpu'
+    if torch.cuda.is_available():
+        device = 'cuda'
+
     sequence_length = 20
-    batch_num = 7
+    batch_size = 7
 
     in_dimension = 5
     out_dimension = 3
 
     assert(in_dimension > out_dimension)
 
-    x = np.zeros([batch_num,sequence_length,in_dimension])
-    for batch in range(batch_num):
-        value = 1.5
+    x = np.zeros([batch_size,sequence_length,in_dimension])
+    for batch_idx in range(batch_size):
+        value = random.uniform(0.5,2.5)
         step = random.randint(5,15)
         for i in range(step,sequence_length):
-            x[batch,i,:] = value
+            x[batch_idx,i,:] = value
 
-    y = np.zeros([batch_num,sequence_length,out_dimension])
-    for batch in range(batch_num):
+    y = np.zeros([batch_size,sequence_length,out_dimension])
+    for batch_idx in range(batch_size):
         for step in range(sequence_length):
             for i in range(out_dimension):
                 if step > 0:
-                    y[batch,step,i] = x[batch,step,i] - x[batch,step-1,i]
+                    y[batch_idx,step,i] = x[batch_idx,step,i] - x[batch_idx,step-1,i]
                 else:
-                    y[batch,step,i] = x[batch,step,i]
+                    y[batch_idx,step,i] = x[batch_idx,step,i]
             
 
     x = torch.Tensor(x)
+    x = x.to(device)
     y = torch.Tensor(y)
+    y = y.to(device)
 
     # Change the attention type to any other string if you want to use the regular self attention.
     attention_type = 'relative'
@@ -155,10 +159,12 @@ if __name__ == '__main__':
                                     torch.nn.SELU(),
                                     MultiHeadSelfAttention(hidden_dimension,out_dimension,head_dim,num_heads, attention_type=attention_type))
 
+    attention = attention.to(device)
+
     criterion = torch.nn.MSELoss(reduction='sum')
     optimizer = torch.optim.SGD(attention.parameters(),lr=1e-4,momentum=0.8)
 
-    for iteration in range(10000):
+    for iteration in range(3000):
 
         optimizer.zero_grad()
         y_hat = attention(x)
@@ -168,15 +174,20 @@ if __name__ == '__main__':
 
         optimizer.step()
 
-        print(loss.item())
+        endline = '\r'
+        if iteration % 100 == 0:
+            endline = '\n'
+        print('Loss: {0:.5} iteration {1}\t\t\t'.format(loss.item(),iteration),end=endline)
 
-    y_hat = y_hat.detach().numpy()
+    y_hat = y_hat.to('cpu').detach().numpy()
+    y = y.to('cpu').numpy()
+    x = x.to('cpu').numpy()
 
-    for batch in range(batch_num):
+    for batch_idx in range(batch_size):
         dimension = 0
-        plt.plot(y_hat[batch,:,dimension])
-        plt.plot(y[batch,:,dimension])
-        plt.plot(x[batch,:,dimension])
+        plt.plot(y_hat[batch_idx,:,dimension])
+        plt.plot(y[batch_idx,:,dimension])
+        plt.plot(x[batch_idx,:,dimension])
         plt.legend(['Prediction','Output','Input'])
-        plt.title('Dimension '+str(dimension)+' Batch '+str(batch))
+        plt.title('Dimension '+str(dimension)+' Batch '+str(batch_idx))
         plt.show()
